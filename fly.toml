@@ -1,0 +1,91 @@
+# fly.toml for Letta server
+# Deploy: fly launch --config fly.toml
+# Secrets: fly secrets set OPENAI_API_KEY=... ANTHROPIC_API_KEY=...
+
+app = "letta-loborobotos"
+primary_region = "sjc"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+["uild"]
+  # Use pre-built Letta image (includes Postgres + Redis + pgvector)
+  image = "letta/letta:latest"
+
+[env]
+  # Server configuration
+  LETTA_DEBUG = "false"
+  POSTGRESUS_USER = "letta"
+  POSTGRES_PASSWORD = "letta"
+  POSTGRES_DB = "letta"
+  # Embedding model (required for agents)
+  LETTA_EMBEDDING_MODEL = "letta/letta-embedding"
+
+# Internal services (not exposed to public)
+[[services]]
+  internal_port = 5432
+  protocol = "tcp"
+  # Postgres - internal only
+
+[[services]]
+  internal_port = 6379
+  protocol = "tcp"
+  # Redis - internal only
+
+# Public API endpoint
+[[services]]
+  internal_port = 8283
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+# Agent sandbox port (optional, for tool execution)
+[[services]]
+  internal_port = 8083
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 8083
+
+# Persistent volume for database
+[[mounts]]
+  source = "letta_data"
+  destination = "/var/lib/postgresql/data"
+  initial_size = "10gb"
+
+# Health check
+[[services.http_checks]]
+  interval = "30s"
+  grace_period = "10s"
+  method = "get"
+  path = "/v1/health"
+  protocol = "http"
+  timeout = "5s"
+  tls_skip_verify = true
+  port = 8283
+
+# Auto-stop on inactivity (save costs)
+# Remove if you need 24/7 availability
+[auto_stop]
+  enable = true
+  min_machines_running = 1
+
+# Secrets (set via: fly secrets set KEY=value)
+# Required:
+#   OPENAI_API_KEY - for OpenAI models
+#   ANTHROPIC_API_KEY - for Claude models
+# Optional:
+#   GROQ_API_KEY - for Groq models
+#   GEMINI_API_KEY - for Google models
+#  OLLAMA_BASE_URL - for local Ollama
+#   AZURE_API_KEY, AZURE_BASE_URL - for Azure OpenAI
